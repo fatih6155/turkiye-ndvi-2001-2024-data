@@ -1,0 +1,406 @@
+---
+title: "Proje_Tr_ecoragion"
+author: "Fatih IŞIK"
+date: "2025-06-26"
+output: html_document
+---
+
+```{r}
+library(readr)
+library(dplyr)
+setwd("C:/Users/LENOVO/Desktop/Eco_region")
+# Dosyayı okuyoruz
+eco_region_1 <- read_delim("Eco_region1.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_2 <- read_delim("Eco_region2.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_3 <- read_delim("Eco_region3.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_4 <- read_delim("Eco_region4.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_5 <- read_delim("Eco_region5.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_6 <- read_delim("Eco_region6.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_7 <- read_delim("Eco_region7.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_8 <- read_delim("Eco_region8.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_9 <- read_delim("Eco_region9.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_10 <- read_delim("Eco_region10.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_11 <- read_delim("Eco_region11.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_12 <- read_delim("Eco_region12.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+eco_region_13 <- read_delim("Eco_region13.csv", delim = ";", escape_double = FALSE, trim_ws = TRUE)
+
+
+```
+
+```{r}
+#-------------------------------------------------------------------------------
+# Gerekli Kütüphaneler (Libraries)
+#-------------------------------------------------------------------------------
+library(tidyverse)
+library(trend)
+
+#-------------------------------------------------------------------------------
+# Veri Yükleme ve Hazırlama (Data Loading and Preparation)
+#-------------------------------------------------------------------------------
+# Bu bölümün daha önce çalıştırıldığını ve 'all_data_raw' veri setinin 
+# R hafızasında olduğunu varsayıyoruz.
+
+#-------------------------------------------------------------------------------
+# METODOLOJİK DÜZELTME: Veriyi Yıllık Ortalamalara Göre Özetleme
+#-------------------------------------------------------------------------------
+# Bu, en kritik adımdır. Trend analizi, yıllık veriler üzerinden yapılmalıdır.
+annual_summary <- all_data_raw %>%
+  group_by(ecoregion, elev_range, year) %>%
+  summarise(mean_ndvi = mean(NDVI, na.rm = TRUE), .groups = 'drop')
+
+#-------------------------------------------------------------------------------
+# Yıllık Veri Üzerinden Trend Analizi
+#-------------------------------------------------------------------------------
+interaction_trends_annual_elev <- annual_summary %>%
+  # NA değerlerini filtrele
+  filter(!is.na(elev_range) & !is.na(mean_ndvi)) %>%
+  group_by(ecoregion, elev_range) %>%
+  # Yeterli sayıda yıl verisi olan grupları al
+  filter(n_distinct(year) > 5) %>%
+  summarise(
+    # Şimdi 'mean_ndvi' sütununu kullanıyoruz.
+    kendalls_tau = mk.test(mean_ndvi)$estimates[['tau']],
+    p_value = mk.test(mean_ndvi)$p.value,
+    .groups = 'drop'
+  )
+
+# Yeni ve daha anlamlı Tau değerlerini kontrol edelim.
+print(head(interaction_trends_annual_elev))
+
+#-------------------------------------------------------------------------------
+# Nihai ve Doğru Görselleştirme
+#-------------------------------------------------------------------------------
+
+# Yükselti kademelerinin grafikte doğru sırada görünmesi için faktör seviyeleri
+elevation_levels <- c("0-250", "250-500", "500-1000", "1000-1500", "1500-2000", "2000-2500", "2500-3000", "3000-4000")
+
+# Isı Haritası (Heatmap) Oluşturma
+heatmap_plot_correct_elev <- 
+  ggplot(interaction_trends_annual_elev, 
+         aes(x = factor(elev_range, levels = elevation_levels), 
+             y = fct_rev(ecoregion),
+             fill = kendalls_tau)) +
+  
+  geom_tile(color = "white", linewidth = 0.5, linetype = 1) + 
+  
+  # DÜZELTİLMİŞ ANLAMLILIK GÖSTERİMİ
+  geom_text(aes(label = paste0(round(kendalls_tau, 2), "\n",
+                               case_when(
+                                 p_value < 0.001 ~ "***", # Önce en küçük p-değeri kontrol edilir
+                                 p_value < 0.01  ~ "**",
+                                 p_value < 0.05  ~ "*",
+                                 TRUE ~ "" # Geriye kalanlar (anlamsız olanlar) için boş bırak
+                               ))), 
+            color = "black", size = 2.5, lineheight = .8) +
+  
+  # Renk skalasını -1 ile +1 arasında sabitliyoruz
+  scale_fill_gradient2(low = "#313695", mid = "white", high = "#A50026", 
+                         midpoint = 0, 
+                         limits = c(-1, 1), 
+                         name = "Kendall's Tau (τ)") +
+  
+  labs(
+    title = "Heterogeneity of Annual NDVI Trends across Elevation and Ecoregions",
+    subtitle = "Heatmap shows the Kendall's Tau (τ) of annual mean NDVI trends (2001–2024). Asterisks denote significance.",
+    x = "Elevation Range (m)",
+    y = NULL
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size=10),
+    axis.text.y = element_text(size=10),
+    axis.title = element_text(face="bold"),
+    legend.position = "right",
+    plot.title = element_text(face = "bold", size = 16, margin = margin(b=5)),
+    plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b=15)),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+# Grafiği R'da göster
+print(heatmap_plot_correct_elev)
+
+# Grafiği yüksek çözünürlüklü olarak kaydet
+ggsave(
+  "Figure_Elevation_Trend_Heatmap_CORRECTED.png",
+  plot = heatmap_plot_correct_elev,
+  width = 12, 
+  height = 10, 
+  dpi = 300
+)
+```
+```{r}
+#-------------------------------------------------------------------------------
+# Gerekli Kütüphaneler ve Veri Hazırlığı
+#-------------------------------------------------------------------------------
+library(tidyverse)
+library(trend)
+# 'all_data_raw' veri setinin hafızada olduğunu varsayıyoruz.
+
+#-------------------------------------------------------------------------------
+# Yıllık Veri Üzerinden Trend Analizi (Daha önceki koddan)
+#-------------------------------------------------------------------------------
+annual_summary_lc <- all_data_raw %>%
+  group_by(ecoregion, landcover_type, year) %>%
+  summarise(mean_ndvi = mean(NDVI, na.rm = TRUE), .groups = 'drop')
+
+interaction_trends_lc <- annual_summary_lc %>%
+  filter(!is.na(landcover_type) & !is.na(mean_ndvi)) %>%
+  group_by(ecoregion, landcover_type) %>%
+  filter(n_distinct(year) > 5) %>%
+  summarise(
+    kendalls_tau = mk.test(mean_ndvi)$estimates[['tau']],
+    p_value = mk.test(mean_ndvi)$p.value,
+    .groups = 'drop'
+  )
+
+#-------------------------------------------------------------------------------
+# Nihai Görselleştirme (Final Tweaks Uygulanmış)
+#-------------------------------------------------------------------------------
+
+# İYİLEŞTİRME 1: Grafiği temizlemek için tamamen boş olan 'Water' kategorisini filtrele
+plot_data_lc <- interaction_trends_lc %>%
+  filter(landcover_type != "Water")
+
+# İYİLEŞTİRME 2: Sütunları daha mantıklı bir ekolojik sıraya koy
+landcover_order <- c("Bare", "Built-up", "Cropland", "Grassland", "Shrubland", "Trees", "Wetland")
+
+# Isı Haritası (Heatmap) Oluşturma
+heatmap_plot_final_lc <- 
+  ggplot(plot_data_lc, 
+         aes(x = factor(landcover_type, levels = landcover_order), 
+             y = fct_rev(ecoregion),
+             fill = kendalls_tau)) +
+  
+  geom_tile(color = "white", linewidth = 0.5, linetype = 1) + 
+  
+  geom_text(aes(label = paste0(round(kendalls_tau, 2), "\n",
+                               case_when(
+                                 p_value < 0.001 ~ "***",
+                                 p_value < 0.01  ~ "**",
+                                 p_value < 0.05  ~ "*",
+                                 TRUE ~ ""
+                               ))), 
+            color = "black", size = 2.5, lineheight = .8) +
+  
+  scale_fill_gradient2(low = "#313695", mid = "white", high = "#A50026", 
+                         midpoint = 0, 
+                         limits = c(-1, 1), 
+                         name = "Kendall's Tau (τ)") +
+  
+  labs(
+    title = "Interaction of Land Cover and Ecoregion on Annual NDVI Trends",
+    subtitle = "Heatmap shows the Kendall's Tau (τ) of annual mean NDVI trends (2001–2024). Asterisks denote significance.",
+    x = "Land Cover Type",
+    y = NULL
+  ) +
+  
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size=10),
+    axis.text.y = element_text(size=10),
+    axis.title = element_text(face="bold"),
+    legend.position = "right",
+    plot.title = element_text(face = "bold", size = 16, margin = margin(b=5)),
+    plot.subtitle = element_text(size = 11, color = "gray30", margin = margin(b=15)),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+# Grafiği R'da göster
+print(heatmap_plot_final_lc)
+
+# Grafiği yüksek çözünürlüklü olarak kaydet
+ggsave(
+  "Figure_LandCover_Trend_Heatmap_FINAL.png",
+  plot = heatmap_plot_final_lc,
+  width = 11, # Genişliği biraz azalttık çünkü bir sütun eksildi
+  height = 10, 
+  dpi = 300
+)
+```
+
+
+```{r}
+#-------------------------------------------------------------------------------
+# Gerekli Kütüphaneler ve Veri Hazırlığı
+#-------------------------------------------------------------------------------
+library(tidyverse)
+library(trend)
+# 'all_data_raw' veri setinin hafızada olduğunu varsayıyoruz.
+
+#-------------------------------------------------------------------------------
+# Yıllık Ortalamalara Göre Özetleme (Türkiye Geneli için)
+#-------------------------------------------------------------------------------
+# DİKKAT: Bu sefer 'ecoregion'a göre gruplamıyoruz!
+annual_summary_overall <- all_data_raw %>%
+  group_by(landcover_type, year) %>%
+  summarise(mean_ndvi = mean(NDVI, na.rm = TRUE), .groups = 'drop')
+
+#-------------------------------------------------------------------------------
+# Türkiye Geneli için Yıllık Veri Üzerinden Trend Analizi
+#-------------------------------------------------------------------------------
+overall_trends_lc <- annual_summary_overall %>%
+  filter(!is.na(landcover_type) & !is.na(mean_ndvi)) %>%
+  group_by(landcover_type) %>%
+  filter(n_distinct(year) > 5) %>%
+  summarise(
+    kendalls_tau = mk.test(mean_ndvi)$estimates[['tau']],
+    p_value = mk.test(mean_ndvi)$p.value,
+    .groups = 'drop'
+  )
+
+# Sonuçları kontrol edelim
+print(overall_trends_lc)
+
+#-------------------------------------------------------------------------------
+# Yüksek Kaliteli Çubuk Grafiği Oluşturma
+#-------------------------------------------------------------------------------
+# 'Water' ve 'Built-up' gibi az veri içeren veya anlamsız trendli grupları çıkarabiliriz.
+plot_data_overall <- overall_trends_lc %>%
+  filter(landcover_type != "Water" & landcover_type != "Built-up")
+
+overall_barchart <- 
+  ggplot(plot_data_overall, 
+         # fct_reorder ile çubukları Tau değerine göre büyükten küçüğe sıralıyoruz.
+         aes(x = fct_reorder(landcover_type, kendalls_tau, .desc = TRUE), 
+             y = kendalls_tau,
+             fill = kendalls_tau)) +
+  
+  geom_col(color = "black", width=0.7) +
+  
+  # Çubukların üzerine Tau değerini ve yıldızları yazdır
+  geom_text(aes(label = paste0(round(kendalls_tau, 2), 
+                               case_when(
+                                 p_value < 0.001 ~ " ***",
+                                 p_value < 0.01  ~ " **",
+                                 p_value < 0.05  ~ " *",
+                                 TRUE ~ ""
+                               ))), 
+            vjust = -0.5, size = 3.5, color = "black") +
+            
+  scale_fill_gradient(low = "#fee0d2", high = "#de2d26", name = "Kendall's Tau (τ)") +
+  
+  # Y ekseninin limitlerini ayarla
+  scale_y_continuous(limits = c(0, 1.0)) +
+
+  labs(
+    title = "National Greening Trends by Land Cover Type",
+    subtitle = "Kendall's Tau (τ) of annual mean NDVI trends for all of Turkey (2001–2024).",
+    x = "Land Cover Type",
+    y = "Kendall's Tau (τ) - Trend Strength"
+  ) +
+  
+  theme_classic(base_size = 12) +
+  theme(legend.position = "none") # Renk skalası gereksiz, değerler zaten yazıyor
+
+print(overall_barchart)
+
+ggsave("Figure_Overall_LandCover_Trends.png", plot = overall_barchart, width = 8, height = 6, dpi = 300)
+```
+
+
+```{r}
+#-------------------------------------------------------------------------------
+# Gerekli Kütüphaneler (rcompanion OLMADAN)
+#-------------------------------------------------------------------------------
+library(tidyverse)
+library(FSA)         # dunnTest için
+library(patchwork)   # Grafikleri birleştirmek için
+# ggpubr paketi, anlamlılık çizgilerini eklemek için kullanılır.
+# Eğer yüklü değilse: install.packages("ggpubr")
+library(ggpubr)
+
+# 'all_data_raw' veri setinin R hafızasında olduğunu varsayıyoruz.
+
+#-------------------------------------------------------------------------------
+# BÖLÜM A: YÜKSELTİ KADEMELERİ ANALİZİ VE GÖRSELLEŞTİRMESİ
+#-------------------------------------------------------------------------------
+
+# 1. Analiz
+#------------------
+# Kruskal-Wallis testi (sonuçları metne yazmak için)
+kruskal_elev <- kruskal.test(NDVI ~ elev_range, data = all_data_raw)
+print(kruskal_elev)
+
+# 2. Görselleştirme
+#------------------
+# Yükselti kademeleri için faktör seviyeleri
+elevation_levels <- c("0-250", "250-500", "500-1000", "1000-1500", "1500-2000", "2000-2500", "2500-3000", "3000-4000")
+
+plot_elev <- ggplot(all_data_raw, aes(x = factor(elev_range, levels = elevation_levels), y = NDVI)) +
+  geom_boxplot(aes(fill = factor(elev_range, levels = elevation_levels)), show.legend = FALSE, outlier.shape = NA) +
+  scale_fill_brewer(palette = "YlOrRd") +
+  scale_y_continuous(limits = c(-0.2, 1.0)) +
+  
+  # ANLAMLILIK KARŞILAŞTIRMALARI (ggpubr ile)
+  # Burada örnek olarak sadece birkaç önemli karşılaştırmayı gösteriyoruz.
+  # Siz buraya dunnTest sonucuna göre kendi istediğiniz karşılaştırmaları ekleyebilirsiniz.
+  stat_compare_means(comparisons = list(c("0-250", "1000-1500"), c("1000-1500", "2000-2500")),
+                     method = "wilcox.test", # Dunn's testinin temel aldığı test
+                     p.adjust.method = "bonferroni",
+                     label = "p.signif") + # Yıldız olarak göster
+  
+  labs(
+    x = "Elevation Range (m)",
+    y = "NDVI"
+  ) +
+  theme_classic(base_size = 12)
+
+#-------------------------------------------------------------------------------
+# BÖLÜM B: ARAZİ ÖRTÜSÜ TİPLERİ ANALİZİ VE GÖRSELLEŞTİRMESİ
+#-------------------------------------------------------------------------------
+# 1. Analiz
+#------------------
+kruskal_lc <- kruskal.test(NDVI ~ landcover_type, data = all_data_raw)
+print(kruskal_lc)
+# Not: Dunn's testinin sonuçları metinde "hepsi birbirinden farklı" olarak belirtilecek.
+
+# 2. Görselleştirme
+#------------------
+# Arazi örtüsü sıralaması
+landcover_order <- c("Bare", "Built-up", "Water", "Cropland", "Grassland", "Wetland", "Shrubland", "Trees")
+
+plot_lc <- ggplot(all_data_raw, aes(x = factor(landcover_type, levels = landcover_order), y = NDVI)) +
+  geom_boxplot(aes(fill = factor(landcover_type, levels = landcover_order)), show.legend = FALSE, outlier.shape = NA) +
+  scale_fill_brewer(palette = "Spectral") +
+  scale_y_continuous(limits = c(-0.2, 1.0)) +
+  labs(
+    x = "Land Cover Type",
+    y = NULL
+  ) +
+  theme_classic(base_size = 12) +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+#-------------------------------------------------------------------------------
+# BÖLÜM C: İKİ GRAFİĞİ BİRLEŞTİRME VE NİHAİ METİN
+#-------------------------------------------------------------------------------
+# Arazi örtüsü gruplarının hepsi birbirinden farklı olduğu için, bu bilgi metinde belirtilip
+# grafikte ek bir gösterime gerek duyulmayabilir. Bu, grafiği daha temiz tutar.
+
+final_comparison_plot <- plot_elev + plot_lc +
+  plot_annotation(
+    title = "Distribution of NDVI Values across Elevation and Land Cover Groups",
+    subtitle = "Box plots show median and interquartile ranges of NDVI. Pairwise comparisons for elevation are shown with significance levels.",
+    tag_levels = 'A'
+  ) &
+  theme(plot.tag = element_text(face = "bold"))
+
+print(final_comparison_plot)
+
+ggsave("Figure_Group_Comparisons_No_rcompanion.png", plot = final_comparison_plot, width = 14, height = 7, dpi = 300)
+```
+
