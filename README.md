@@ -40,3 +40,6 @@ Each CSV corresponds to a specific ecoregion.
 │   └── 04_figures_timeseries_boxplots.R
 └── README.md
 
+The full analysis workflow, including data import, processing, and visualizations, is provided in the R Markdown file:
+[`Eco_region_proje.Rmd`](Eco_region_proje.Rmd)
+
